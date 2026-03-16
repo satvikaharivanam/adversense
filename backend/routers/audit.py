@@ -57,13 +57,14 @@ async def get_findings(job_id: str):
     return job.get("findings", [])
 
 
-@router.get("/{job_id}/report")
-async def get_report(job_id: str):
+@router.get("/{job_id}/report/pdf")
+async def get_report_pdf(job_id: str):
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
     if job.get("status") != "completed":
         raise HTTPException(status_code=202, detail="Audit not yet complete.")
+    # Return JSON report instead of PDF for cloud deployment
     return job.get("report", {})
 
 
