@@ -316,6 +316,7 @@ async def run_audit_job(job_id: str) -> None:
         job["report"] = report
         job["status"] = "completed"
         job["findings"] = findings
+        print(f"[DONE] job {job_id} complete. report keys: {list(report.keys())}, findings: {len(findings)}")
 
         _emit(job_id, {
             "type": "complete",
