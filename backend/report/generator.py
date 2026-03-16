@@ -1,70 +1,153 @@
 """
-PDF report generator.
-Renders the report JSON into HTML via Jinja2, then converts to PDF with WeasyPrint.
+PDF report generator using ReportLab — works on all platforms including Render.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict
 
-from jinja2 import Environment, FileSystemLoader
-from weasyprint import CSS, HTML
-
-TEMPLATES_DIR = Path(__file__).parent / "templates"
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+)
 
 SEVERITY_COLOURS = {
-    "critical": "#dc2626",
-    "high":     "#ea580c",
-    "medium":   "#ca8a04",
-    "low":      "#2563eb",
-    "none":     "#6b7280",
+    "critical": colors.HexColor("#dc2626"),
+    "high":     colors.HexColor("#ea580c"),
+    "medium":   colors.HexColor("#ca8a04"),
+    "low":      colors.HexColor("#2563eb"),
+    "none":     colors.HexColor("#6b7280"),
+}
+
+GRADE_COLOURS = {
+    "A": colors.HexColor("#16a34a"),
+    "B": colors.HexColor("#2563eb"),
+    "C": colors.HexColor("#ca8a04"),
+    "D": colors.HexColor("#ea580c"),
+    "F": colors.HexColor("#dc2626"),
 }
 
 
 def generate_pdf_report(report_data: Dict[str, Any], output_path: str) -> None:
-    """
-    Render report_data to a PDF file at output_path.
-    """
-    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
-    template = env.get_template("report.html")
-
-    findings = report_data.get("findings", [])
-    for f in findings:
-        sev = f.get("severity", "none").lower()
-        f["colour"] = SEVERITY_COLOURS.get(sev, SEVERITY_COLOURS["none"])
-
-    html_content = template.render(
-        model_description=report_data.get("model_description", "Unknown model"),
-        model_url=report_data.get("model_url", ""),
-        audit_date=report_data.get("audit_date", ""),
-        job_id=report_data.get("job_id", ""),
-        total_probes=report_data.get("total_probes", 0),
-        executive_summary=report_data.get("executive_summary", ""),
-        overall_grade=report_data.get("overall_grade", "N/A"),
-        attack_surface=report_data.get("attack_surface", []),
-        findings=findings,
-        severity_distribution=report_data.get("severity_distribution", {}),
-        recommendations=report_data.get("recommendations", []),
-        conclusion=report_data.get("conclusion", ""),
-    )
-
-    base_css = CSS(string="""
-        @page { size: A4; margin: 2cm 2.5cm; }
-        body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.5; }
-        h1 { font-size: 22pt; color: #1e3a5f; margin-bottom: 4pt; }
-        h2 { font-size: 14pt; color: #1e3a5f; border-bottom: 1px solid #cbd5e1; padding-bottom: 4pt; margin-top: 20pt; }
-        table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 8pt; }
-        th { background: #1e3a5f; color: white; padding: 6pt 8pt; text-align: left; }
-        td { padding: 5pt 8pt; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-        tr:nth-child(even) td { background: #f8fafc; }
-        .badge { display: inline-block; padding: 2pt 7pt; border-radius: 4pt; color: white; font-size: 8.5pt; font-weight: bold; }
-        .grade { font-size: 18pt; font-weight: bold; }
-        .meta { color: #64748b; font-size: 9pt; }
-        ol { padding-left: 18pt; }
-        ol li { margin-bottom: 5pt; }
-    """)
-
-    HTML(string=html_content, base_url=str(TEMPLATES_DIR)).write_pdf(
+    doc = SimpleDocTemplate(
         output_path,
-        stylesheets=[base_css],
+        pagesize=A4,
+        rightMargin=2.5 * cm,
+        leftMargin=2.5 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
     )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("title", parent=styles["Title"], fontSize=20, textColor=colors.HexColor("#1e3a5f"))
+    h2_style = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=13, textColor=colors.HexColor("#1e3a5f"))
+    normal = styles["Normal"]
+    small = ParagraphStyle("small", parent=normal, fontSize=9, textColor=colors.HexColor("#64748b"))
+
+    story = []
+
+    # Title
+    story.append(Paragraph("AdverSense Robustness Audit Report", title_style))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Metadata
+    story.append(Paragraph(f"<b>Model:</b> {report_data.get('model_description', '')}", small))
+    story.append(Paragraph(f"<b>Endpoint:</b> {report_data.get('model_url', '')}", small))
+    story.append(Paragraph(f"<b>Date:</b> {report_data.get('audit_date', '')}", small))
+    story.append(Paragraph(f"<b>Job ID:</b> {report_data.get('job_id', '')}", small))
+    story.append(Paragraph(f"<b>Total Probes:</b> {report_data.get('total_probes', 0)}", small))
+
+    # Grade
+    grade = report_data.get("overall_grade", "N/A")
+    grade_letter = grade[0] if grade else "N"
+    grade_colour = GRADE_COLOURS.get(grade_letter, colors.gray)
+    grade_style = ParagraphStyle("grade", parent=normal, fontSize=22, textColor=grade_colour)
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(Paragraph(f"<b>Overall Grade: {grade}</b>", grade_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e2e8f0")))
+
+    # Executive Summary
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Executive Summary", h2_style))
+    story.append(Paragraph(report_data.get("executive_summary", ""), normal))
+
+    # Severity Distribution
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Severity Distribution", h2_style))
+    dist = report_data.get("severity_distribution", {})
+    sev_data = [["Severity", "Count"]]
+    for sev in ["critical", "high", "medium", "low"]:
+        sev_data.append([sev.upper(), str(dist.get(sev, 0))])
+    sev_table = Table(sev_data, colWidths=[8 * cm, 4 * cm])
+    sev_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(sev_table)
+
+    # Findings
+    story.append(Spacer(1, 0.3 * cm))
+    findings = report_data.get("findings", [])
+    story.append(Paragraph(f"Findings ({len(findings)})", h2_style))
+
+    if findings:
+        find_data = [["Sev", "Category", "Probe", "Response", "Explanation"]]
+        for f in findings:
+            find_data.append([
+                f.get("severity", "").upper()[:4],
+                f.get("category", "")[:15],
+                f.get("probe", "")[:40],
+                f.get("response", "")[:20],
+                f.get("explanation", f.get("reason", ""))[:60],
+            ])
+        find_table = Table(find_data, colWidths=[1.5*cm, 3*cm, 5*cm, 3*cm, 5*cm])
+        find_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(find_table)
+    else:
+        story.append(Paragraph("No failures discovered.", normal))
+
+    # Recommendations
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Recommendations", h2_style))
+    recs = report_data.get("recommendations", [])
+    if recs:
+        for i, rec in enumerate(recs, 1):
+            story.append(Paragraph(f"{i}. {rec}", normal))
+            story.append(Spacer(1, 0.1 * cm))
+    else:
+        story.append(Paragraph("None generated.", normal))
+
+    # Conclusion
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph("Conclusion", h2_style))
+    story.append(Paragraph(report_data.get("conclusion", ""), normal))
+
+    # Footer
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0")))
+    story.append(Paragraph(
+        f"Generated by AdverSense · Powered by Amazon Nova 2 Lite · {report_data.get('audit_date', '')}",
+        ParagraphStyle("footer", parent=normal, fontSize=7, textColor=colors.HexColor("#94a3b8"))
+    ))
+
+    doc.build(story)
