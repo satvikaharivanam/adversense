@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 import boto3
 
-from backend.store import JOBS
+from backend.store import JOBS, save_job
 from backend.agent.prompts.planner_prompt import PLANNER_SYSTEM_PROMPT
 from backend.agent.prompts.synthesizer_prompt import build_synthesizer_prompt
 from backend.agent.tools.model_querier import configure as configure_querier, query_model
@@ -316,7 +316,8 @@ async def run_audit_job(job_id: str) -> None:
         job["report"] = report
         job["status"] = "completed"
         job["findings"] = findings
-        print(f"[DONE] job {job_id} complete. report keys: {list(report.keys())}, findings: {len(findings)}")
+        save_job(job_id)
+        print(f"[DONE] job {job_id} saved. findings={len(findings)}, grade={report.get('overall_grade')}")
 
         _emit(job_id, {
             "type": "complete",
@@ -329,4 +330,5 @@ async def run_audit_job(job_id: str) -> None:
         logger.exception("Audit %s failed: %s", job_id, exc)
         job["status"] = "failed"
         job["error"] = str(exc)
+        save_job(job_id)
         _emit(job_id, {"type": "error", "text": f"Audit failed: {exc}"})

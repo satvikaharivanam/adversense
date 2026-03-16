@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from backend.routers.audit import router as audit_router
 from backend.routers.ws import router as ws_router
+from backend.store import load_jobs
 
 load_dotenv()
+load_jobs()
 
 app = FastAPI(title="AdverSense")
 
