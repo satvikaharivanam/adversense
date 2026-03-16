@@ -1,0 +1,17 @@
+# pyproject.toml  (replace the whole file or append)
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "adversense"
+version = "0.0.1"
+# optional: add these if you want
+description = "AdverSense robustness auditing agent"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+# ^ this is the key line — tells Hatchling: "the package code is in backend/"

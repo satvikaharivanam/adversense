@@ -1,0 +1,9 @@
+venv/
+venvsource/
+__pycache__/
+*.pyc
+.env
+node_modules/
+frontend/dist/
+*.pdf
+.DS_Store
